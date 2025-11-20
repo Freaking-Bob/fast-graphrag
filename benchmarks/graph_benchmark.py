@@ -12,8 +12,13 @@ from _domain import DOMAIN, ENTITY_TYPES, QUERIES
 from dotenv import load_dotenv
 from tqdm import tqdm
 
+import os
+import instructor
+from fast_graphrag._llm import OpenAILLMService, OpenAIEmbeddingService
 from fast_graphrag import GraphRAG, QueryParam
 from fast_graphrag._utils import get_event_loop
+
+
 
 
 @dataclass
@@ -72,6 +77,26 @@ def get_queries(dataset: Any):
 
     return queries
 
+#Def a config to use the ollama model
+llm_model = os.getenv("LLM_MODEL", "qwen3:8b")
+embed_model = os.getenv("EMBED_MODEL", "nomic-embed-text")
+base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:11434/v1")
+api_key = os.getenv("OPENAI_API_KEY", "ollama")
+
+config = GraphRAG.Config(
+    llm_service=OpenAILLMService(
+        model=llm_model,
+        base_url=base_url,
+        api_key=api_key,
+        mode=instructor.Mode.JSON,
+    ),
+    embedding_service=OpenAIEmbeddingService(
+        model=embed_model,
+        base_url=base_url,
+        api_key=api_key,
+        embedding_dim=768,  # 按你的 embedding 模型实际维度改
+    ),
+)
 
 if __name__ == "__main__":
     load_dotenv()
@@ -96,6 +121,7 @@ if __name__ == "__main__":
             domain=DOMAIN[args.dataset],
             example_queries="\n".join(QUERIES),
             entity_types=ENTITY_TYPES[args.dataset],
+            config=config,
         )
         grag.insert(
             [f"{title}: {corpus}" for _, (title, corpus) in tuple(corpus.items())],
@@ -107,8 +133,9 @@ if __name__ == "__main__":
         grag = GraphRAG(
             working_dir=working_dir,
             domain=DOMAIN[args.dataset],
-            example_queries="\n".join(QUERIES),
+            example_queries="\n".join(QUERIES[args.dataset]),
             entity_types=ENTITY_TYPES[args.dataset],
+            config=config,
         )
 
         async def _query_task(query: Query) -> Dict[str, Any]:
@@ -168,7 +195,6 @@ if __name__ == "__main__":
         )
         if len(retrieval_scores_multihop):
             print(
-                f"[multihop] Percentage of queries with perfect retrieval: {
-                    np.mean([1 if s == 1.0 else 0 for s in retrieval_scores_multihop])
-                }"
+                f"[multihop] Percentage of queries with perfect retrieval: "
+                f"{np.mean([1 if s == 1.0 else 0 for s in retrieval_scores_multihop])}"
             )
